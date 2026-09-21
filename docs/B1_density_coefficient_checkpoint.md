@@ -170,13 +170,29 @@ det844:                      @ FUN_01016844 detour (after entry push)
     .section .hook844,"ax",%progbits
     bl   det844              @ overwrites 0x01016846
 ```
-Assemble/link at fixed addresses:
-```bash
-arm-none-eabi-as -mcpu=cortex-m0 -mthumb hooks.s -o hooks.o
-arm-none-eabi-ld -T hooks.ld hooks.o -o hooks.elf      # .caveA@0x0102bbea .caveB@0x0102bc4a
-                                                       # .hook124@0x01016126 .hook844@0x01016846
-arm-none-eabi-objcopy -O binary --only-section=.caveA hooks.elf caveA.bin   # etc.
+Assemble/link at fixed addresses using the linker script `B1_5.22_density_hooks.ld`
+(next to the `.s` in `src/`):
+```ld
+SECTIONS {
+  . = 0x0102bbea; .caveA : { *(.caveA) }
+  . = 0x0102bc4a; .caveB : { *(.caveB) }
+  . = 0x01016126; .hook124 : { *(.hook124) }
+  . = 0x01016846; .hook844 : { *(.hook844) }
+  /DISCARD/ : { *(.ARM.attributes) *(.comment) }
+}
 ```
+```bash
+arm-none-eabi-as -mcpu=cortex-m0 -mthumb B1_5.22_density_hooks.s -o hooks.o
+arm-none-eabi-ld -T B1_5.22_density_hooks.ld hooks.o -o hooks.elf
+arm-none-eabi-objdump -h hooks.elf | grep -E 'cave|hook'   # check VMAs (see note below)
+for s in caveA caveB hook124 hook844; do
+  arm-none-eabi-objcopy -O binary --only-section=.$s hooks.elf $s.bin
+done
+```
+Note: `.caveA` contains `.align 2` for the float table, so ld rounds its start from
+`0x0102bbea` up to **`0x0102bbec`** (the address in the patch map below). `.caveB` and the two
+4-byte hook stubs land exactly at the addresses in the script. The four `.bin` outputs are the
+bytes to splice into the firmware at file offsets `0x1bbec`, `0x1bc4a`, `0x6126`, `0x6846`.
 
 ---
 
@@ -263,6 +279,7 @@ prints (host sends `SetDensity` before each job).
 
 - `B1_5.22_density_coeff.bin` — **final, flashed** (md5 `023ff56326fe8c65f01b68f32ebdba99`).
 - `B1_5.22_density_hooks.s` — the cave assembly source.
+- `B1_5.22_density_hooks.ld` — the linker script that places the caves/hooks at their fixed addresses.
 - `B1_5.22_thirdparty_fullquality.bin` — fixed coeff-400 solid (no density); revert/fallback.
 - stock `B1_5.22` firmware — not distributed here (Niimbot copyright); obtain via the official Niimbot app / niimblue if you need to revert to stock.
 - `B1_firmware_RE_checkpoint.md` — the general RE + tuning checkpoint (prerequisite reading).

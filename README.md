@@ -60,7 +60,7 @@ ask it to port the patch to *your* firmware dump:
 - Those document everything needed to redo it on another dump: the energy model
   (`darkness = renderer_input × coefficient`), how the real density byte was located,
   the renderer entry points to hook, the Cortex-M0 detour technique, the full cave
-  assembly (`src/B1_5.22_density_hooks.s`), and the exact patch/byte map.
+  assembly (`src/B1_5.22_density_hooks.s` + `.ld`), and the exact patch/byte map.
 - Ask it to locate the equivalent renderer entries and density config byte in your
   dump and reproduce the input-scaling detours. **Verify on paper before flashing.**
 
@@ -73,6 +73,7 @@ ask it to port the patch to *your* firmware dump:
 | `docs/B1_density_coefficient_checkpoint.md` | Density feature RE + patch map (feed to an LLM to port). |
 | `docs/B1_firmware_RE_checkpoint.md` | General B1 RE + darkness/coefficient model. |
 | `src/B1_5.22_density_hooks.s` | Cortex-M0 code-cave detour source for the patch. |
+| `src/B1_5.22_density_hooks.ld` | Linker script placing the caves/hook stubs at their fixed flash addresses. |
 | `src/niimbot_b1.py` | Minimal B1 USB (CDC-ACM) driver for printing / testing. |
 | `test-labels/dtest_D1.png … dtest_D5.png` | 384-px self-labeled density test images (D1–D5). |
 
