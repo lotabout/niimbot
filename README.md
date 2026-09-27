@@ -203,6 +203,41 @@ on `main`. Check 8 needs `pip install capstone`.
    python3 src/niimbot_b1.py image test-labels/dtest_D3.png --density 3
    ```
 
+## How this port was made
+
+This branch — the disassembly work, the cave encoder, the reproducible builders and every
+verifier under `build/` and `repro/` — was produced with **DeepSeek Harness (DSH)**, a
+local agentic coding environment, working against a firmware dump of the author's own
+printer. Nothing was hand-patched: each step is a re-runnable script in this repository.
+
+1. **Disassemble and compare.** Capstone decodes both dumps side by side; the renderer
+   entries, the soft-float multiply routine and the config struct turned out to be
+   instruction-for-instruction identical between 5.22 and 6.19, which reduced the job to
+   swapping addresses.
+2. **Locate the density byte.** Found through the config validator's clamp signature
+   (`[CFG+4]` → 1..5, default 3) and the SetDensity handler's `strb`, then cross-checked
+   through the reference chain — the whole `0x207xx` block shifts by +0x3C between the two
+   versions.
+3. **Find safe code caves.** The dump was scanned for zero runs that are *also*
+   unreferenced (no literal-pool pointer, no branch target). Only two runs qualified; the
+   others are referenced data.
+4. **Emit the cave with a purpose-built encoder.** A small Python Thumb-1 encoder writes
+   the `bl` instructions and the cave bytes, then decodes them back for self-checking — no
+   ARM toolchain is needed to rebuild the image.
+5. **Anchor the tooling on a released image first.** Before touching 6.19, the same encoder
+   rebuilds the published 5.22 density image byte-for-byte (0 bytes difference). That is
+   what makes the 6.19 result auditable rather than merely plausible.
+6. **Verify read-only, then publish.** A 10-check verifier re-derives the image,
+   disassembles it back and asserts that every changed byte lies inside an expected region.
+
+The whole chain can be re-run without trusting the author:
+
+```sh
+python3 repro/reproduce_522_density.py --src <stock B1_5.22.bin>   # anchor on upstream
+python3 build/build_b1_619_density.py  --src <stock B1_6.19.bin>   # rebuild this image
+python3 repro/verify_b1_619_density.py --src <stock B1_6.19.bin>   # verify it read-only
+```
+
 ## Other models or firmware versions
 
 **Do not flash these images.** Instead, hand `docs/` to a capable coding LLM and have it
