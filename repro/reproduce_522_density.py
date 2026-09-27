@@ -24,7 +24,8 @@ from fractions import Fraction
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "build"))
+for _p in (str(HERE), str(HERE.parent / "build")):
+    sys.path.insert(0, _p)
 import build_b1_619_density as B  # noqa: E402
 
 BASE = 0x01010000
@@ -57,18 +58,22 @@ COEFF_TARGET = 400.0
 
 
 def _find(*cands):
-    """按候选相对路径定位输入文件：本地工作区用 fw/，仓库内用 firmware/。"""
+    """定位输入文件：本地工作区 (fw/) / 仓库 (firmware/) / 扁平复现包 (同目录) 都可用。"""
     for c in cands:
-        p = HERE.parent / c
-        if p.exists():
-            return str(p)
+        for base in (HERE, HERE.parent):
+            p = base / c
+            if p.exists():
+                return str(p)
     return str(HERE.parent / cands[-1])
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=_find("fw/B1_5.22.bin", "firmware/B1_5.22.bin"))
-    ap.add_argument("--ref", default=_find("fw/threeDaPrint/B1_5.22_density_coeff.bin",
+    ap.add_argument("--src", default=_find("B1_5.22.bin", "fw/B1_5.22.bin",
+                                           "firmware/B1_5.22.bin"))
+    ap.add_argument("--ref", default=_find("B1_5.22_density_coeff.bin",
+                                           "fw/B1_5.22_density_coeff.bin",
+                                           "fw/threeDaPrint/B1_5.22_density_coeff.bin",
                                            "firmware/B1_5.22_density_coeff.bin"))
     ap.add_argument("--out", default=None)
     args = ap.parse_args()

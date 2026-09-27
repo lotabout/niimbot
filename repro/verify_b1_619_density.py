@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "build"))
+for _p in (str(HERE), str(HERE.parent / "build")):
+    sys.path.insert(0, _p)
 import build_b1_619_density as B  # noqa: E402
 
 BASE = B.BASE
@@ -32,11 +33,12 @@ EXPECT_SHA256 = "cd4af7984982295d457d352992c588a9d265dc2be135ac584c97fd9bcc4bd49
 # 允许变化区域（file offset 区间，闭区间）
 
 def _find(*cands):
-    """按候选相对路径定位输入文件：本地工作区用 fw/，仓库内用 firmware/。"""
+    """定位输入文件：本地工作区 (fw/) / 仓库 (firmware/) / 扁平复现包 (同目录) 都可用。"""
     for c in cands:
-        p = HERE.parent / c
-        if p.exists():
-            return str(p)
+        for base in (HERE, HERE.parent):
+            p = base / c
+            if p.exists():
+                return str(p)
     return str(HERE.parent / cands[-1])
 
 
@@ -56,9 +58,11 @@ ALLOWED = [
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--img", default=_find("fw/B1_6.19_density_coeff.bin",
+    ap.add_argument("--img", default=_find("B1_6.19_density_coeff.bin",
+                                           "fw/B1_6.19_density_coeff.bin",
                                            "firmware/B1_6.19_density_coeff.bin"))
-    ap.add_argument("--src", default=_find("fw/B1_6.19.bin", "firmware/B1_6.19.bin"))
+    ap.add_argument("--src", default=_find("B1_6.19.bin", "fw/B1_6.19.bin",
+                                           "firmware/B1_6.19.bin"))
     args = ap.parse_args()
 
     src_p, img_p = Path(args.src), Path(args.img)
