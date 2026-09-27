@@ -9,7 +9,7 @@
   5  2 处 RFID curve-flag == 00 21
   6  hook A/B 4 字节 == 期望的 bl，且 bl 解码目标正确
   7  cave A/B 字节 == 由 build 脚本重建的字节（逐字节）
-  8  capstone 反汇编回读（若可用）: cave 内 bl 目标 / 栈偏移 / 位移指令
+  8  capstone 反汇编回读（可选; 由 $CAPSTONE_PATH 或 ~/.tools 提供）: cave 内 bl 目标 / 栈偏移 / 位移指令
   9  差异字节全部落在允许区域，区域外变化 0
 
 用法: python3 verify_b1_619_density.py [--img fw/B1_6.19_density_coeff.bin]
@@ -17,6 +17,7 @@
 """
 import argparse
 import hashlib
+import os
 import struct
 import sys
 from pathlib import Path
@@ -132,7 +133,16 @@ def main() -> int:
           f"caveA={len(cave_a)}B caveB={len(cave_b)}B")
 
     try:
-        sys.path.insert(0, os.path.expanduser("~/.tools"))
+        # capstone 是可选依赖: 路径取 $CAPSTONE_PATH，或常见的用户级安装位置
+        _cands = [os.environ.get("CAPSTONE_PATH"), os.path.expanduser("~/.tools")]
+        try:
+            _cands += [str(p) for p in Path.home().glob("*/.tools")]
+        except OSError:
+            pass
+        _cands += ["/usr/local/lib", "/usr/lib"]
+        for _cand in filter(None, _cands):
+            if os.path.isdir(_cand):
+                sys.path.insert(0, _cand)
         from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB, CS_MODE_MCLASS
         md = Cs(CS_ARCH_ARM, CS_MODE_THUMB + CS_MODE_MCLASS)
         lines = []
