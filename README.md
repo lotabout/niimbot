@@ -177,9 +177,10 @@ on `main`. Check 8 needs `pip install capstone`.
   print head batch, supply and paper may differ.
 - The `×1.5` line-period timing is unverified on 6.19 (upstream verified ×1.5 as safe and
   ×2 as dropping lines on 5.22 hardware).
-- **Dual-colour (red/black) paper will likely lose its red grade**: builds A and B both
-  raise renderer A's six coefficients to 400, and that group is what creates the red
-  energy window. See *Testing notes* for the dual-colour variant.
+- **Dual-colour is not a B1 feature**: the vendor confirms the B1 (non-PRO) cannot print
+  red/black dual-layer paper — that needs a **B1 PRO**. Builds A and B also raise renderer
+  A's six coefficients to 400, which on a dual-colour head would collapse the red energy
+  window; this device has no such window to lose, so no variant is needed.
 
 ## Testing notes
 
@@ -194,10 +195,7 @@ on `main`. Check 8 needs `pip install capstone`.
    ```sh
    python3 build/build_b1_619.py --coeff 300 --feed 1.5 --out firmware/B1_6.19_c300.bin
    ```
-6. **Dual-colour paper**: rebuild while skipping renderer A's six coefficients (edit the
-   `COEFFS` list in `build/build_b1_619.py`), or patch only the base group + renderer B +
-   line-period. That variant is not shipped here yet.
-7. Print/test helper:
+6. Print/test helper:
    ```sh
    python3 src/niimbot_b1.py info          # check the firmware version first
    python3 src/niimbot_b1.py image test-labels/dtest_D3.png --density 3
