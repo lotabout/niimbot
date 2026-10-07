@@ -5,12 +5,12 @@
   1) 15 个 IEEE-754 float 能量系数  ->  400.0
   2) line-period 表 64 x u16        ->  floor(old * 3/2)   ← 向零截断 = 向下取整
   3) 两处 RFID curve-flag 字节      ->  03 21 改为 00 21
-  4) RFID 读取失败旁路 0x01025478   ->  02 28 改为 ff 28（cmp r0,#2 -> cmp r0,#0xff）
+  4) RFID 读取失败旁路 0x010254c2   ->  01 21 改为 00 21（movs r1,#1 -> movs r1,#0）
   5) 其余字节一律不动，输出长度与源文件相同
 
 规则 4 是 6.19 专有：6.19 新增的 RFID 模块在打印中连续读不到标签会置错误位并回
 0xDB 0x14（WriteRfidFail），无标签的第三方纸因此无法打印（原厂 6.19 已真机复现）。
-把 0x102543e 里"打印机状态==2"的比较改成永不成立，读取失败就按空闲路径静默返回。
+把 0x102543e 里置状态位 bit19 的 movs r1,#1 立即数改成 0，使 orrs 成为无操作，错误位永不置位；换纸后的退纸/重试走纸分支不受影响。
 详见 docs/B1_6.19_rfid_bypass.md。
 
 为什么规则 2 是 floor 而不是就近取整
@@ -26,7 +26,7 @@ ThreeDaPrint 原库发布了 5.22 的成品镜像 firmware/B1_5.22_thirdparty_fu
   # 不带 --out 时只做校验、不写文件（dry-run）
 
 成功判据:
-  输出 md5 == 76b55d0472110e6da95f5c0fb68d09e1，且大小 124436。
+  输出 md5 == ca9d08b3a8b36b75c9f8dea01e97bfe0，且大小 124436。
   （不含规则 4 的旧镜像 md5 为 b7d4f4e5f07bdae5fceb75b29949e6af。）
 """
 import argparse
@@ -39,7 +39,7 @@ from pathlib import Path
 BASE = 0x01010000
 SRC_MD5 = "fd9efd1441b5f05ca46c310b8d162dc1"
 SRC_SIZE = 124436
-OUT_MD5 = "76b55d0472110e6da95f5c0fb68d09e1"
+OUT_MD5 = "ca9d08b3a8b36b75c9f8dea01e97bfe0"
 COEFF_TARGET = 400.0
 FEED = Fraction(3, 2)          # 1.5 精确有理数，无二进制浮点误差
 
@@ -78,12 +78,14 @@ RFID_OLD = b"\x03\x21"
 RFID_NEW = b"\x00\x21"
 
 # RFID read-failure bypass（6.19 新增 RFID 模块；5.22 无此路径，见 docs/B1_6.19_rfid_bypass.md）
-#   0x01025478  cmp r0,#2  (02 28)  ->  cmp r0,#0xff  (ff 28)
-#   无标签纸读取失败时，0x102543e 只在打印机状态==2（打印中）才升级为错误 0x14
-#   (WriteRfidFail)；比较改为永不成立后，失败读取与空闲时一样静默返回。
-RFID_BYPASS_SITE = 0x01025478
-RFID_BYPASS_OLD = b"\x02\x28"
-RFID_BYPASS_NEW = b"\xff\x28"
+#   0x010254c2  movs r1,#1  (01 21)  ->  movs r1,#0  (00 21)
+#   无标签纸打印时 0x102543e 把状态字 bit19 置位（movs r1,#1; lsls r1,#0x13;
+#   orrs r0,r1; str），该位被 0x10108e2 映射为错误码 0x14（WriteRfidFail）。
+#   把立即数改成 0 后 orrs 成为无操作，错误位永不置位；换纸后的退纸/重试走纸
+#   分支（同函数内 0x1017c04）保持不变，不会被这个补丁动到。
+RFID_BYPASS_SITE = 0x010254C2
+RFID_BYPASS_OLD = b"\x01\x21"
+RFID_BYPASS_NEW = b"\x00\x21"
 
 
 def scale_floor(x: int, f: Fraction) -> int:

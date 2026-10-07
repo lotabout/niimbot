@@ -43,8 +43,8 @@ value into the print engine at all).
 
 | File | md5 | What it is |
 |---|---|---|
-| `firmware/B1_6.19_density_coeff.bin` | `89b78b234df74ab6d62e8fc5025eaab1` | **Recommended**: density-controlled darkness (D1–D5) |
-| `firmware/B1_6.19_thirdparty_fullquality.bin` | `76b55d0472110e6da95f5c0fb68d09e1` | Fixed full darkness, **no** density control |
+| `firmware/B1_6.19_density_coeff.bin` | `1553badbc6b1b53cb36919786149e2de` | **Recommended**: density-controlled darkness (D1–D5) |
+| `firmware/B1_6.19_thirdparty_fullquality.bin` | `ca9d08b3a8b36b75c9f8dea01e97bfe0` | Fixed full darkness, **no** density control |
 
 Both are **124436 bytes**, the same size as stock 6.19 (no partition changes).
 SHA-256 sums for every file: `repro/SHA256SUMS.txt`.
@@ -62,9 +62,10 @@ paper type — that is why third-party paper prints faint. The patch does two th
 - 15 coefficients (4 base + 6 renderer A + 5 renderer B) → `400.0`
 - the 64-entry line-period table → `floor(old × 1.5)` (slower feed = more heat budget per line)
 - two RFID curve-flag bytes `03 21` → `00 21` (following the upstream build; harmless)
-- the 6.19-only RFID read-failure bypass: `0x01025478` `02 28` → `ff 28`
-  (`cmp r0,#2` → `cmp r0,#0xff`), so a tag read that fails during printing no longer
-  escalates to error `0x14` (see `docs/B1_6.19_rfid_bypass.md`)
+- the 6.19-only RFID read-failure bypass: `0x010254c2` `01 21` → `00 21`
+  (`movs r1,#1` → `movs r1,#0`), zeroing the status bit-19 write so a failed tag read no
+  longer escalates to error `0x14`; the paper-insertion feed is left intact (see
+  `docs/B1_6.19_rfid_bypass.md`)
 
 **Build B (density-controlled)** = build A **+ 4 code injections**: one `bl` right after
 each renderer's entry `push`, jumping into a code cave in free flash, which scales the
@@ -166,7 +167,7 @@ on `main`. Check 8 needs `pip install capstone`.
 
 **Proven (byte level)**
 
-- Build B rebuilds byte-for-byte from stock 6.19 (md5 `89b78b23…`); all 271 changed bytes
+- Build B rebuilds byte-for-byte from stock 6.19 (md5 `1553badb…`); all 271 changed bytes
   fall inside the expected regions — **0 bytes outside**.
 - All 15 coefficients, the 64 line-period entries, both RFID flags, the RFID bypass byte,
   both hook `bl` literals and both code caves were checked item by item; capstone disassembly read-back

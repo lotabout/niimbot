@@ -7,7 +7,7 @@
   A) 15 个 IEEE-754 float 能量系数        -> 400.0
   B) line-period 表 64 x u16              -> floor(old * 3/2)
   C) 两处 RFID curve-flag 字节            -> 03 21 改为 00 21
-  D) RFID 读取失败旁路 0x01025478         -> 02 28 改为 ff 28（6.19 专有）
+  D) RFID 读取失败旁路 0x010254c2         -> 01 21 改为 00 21（6.19 专有）
      6.19 新增的 RFID 模块在打印中读不到标签会回 0xDB 0x14（WriteRfidFail），
      无标签纸无法打印；该补丁让失败读取按空闲路径静默返回。
      详见 docs/B1_6.19_rfid_bypass.md。
@@ -88,12 +88,14 @@ RFID_OLD = b"\x03\x21"
 RFID_NEW = b"\x00\x21"
 
 # RFID read-failure bypass（6.19 新增 RFID 模块；5.22 无此路径，见 docs/B1_6.19_rfid_bypass.md）
-#   0x01025478  cmp r0,#2  (02 28)  ->  cmp r0,#0xff  (ff 28)
-#   无标签纸读取失败时，0x102543e 只在打印机状态==2（打印中）才升级为错误 0x14
-#   (WriteRfidFail)；比较改为永不成立后，失败读取与空闲时一样静默返回。
-RFID_BYPASS_SITE = 0x01025478
-RFID_BYPASS_OLD = b"\x02\x28"
-RFID_BYPASS_NEW = b"\xff\x28"
+#   0x010254c2  movs r1,#1  (01 21)  ->  movs r1,#0  (00 21)
+#   无标签纸打印时 0x102543e 把状态字 bit19 置位（movs r1,#1; lsls r1,#0x13;
+#   orrs r0,r1; str），该位被 0x10108e2 映射为错误码 0x14（WriteRfidFail）。
+#   把立即数改成 0 后 orrs 成为无操作，错误位永不置位；换纸后的退纸/重试走纸
+#   分支（同函数内 0x1017c04）保持不变，不会被这个补丁动到。
+RFID_BYPASS_SITE = 0x010254C2
+RFID_BYPASS_OLD = b"\x01\x21"
+RFID_BYPASS_NEW = b"\x00\x21"
 
 # ---- 移植点（6.19 实测地址） ----
 DENSITY_BYTE = 0x00020740          # 5.22: 0x00020704（config struct +4）

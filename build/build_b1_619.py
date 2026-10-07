@@ -6,7 +6,7 @@
   - line-period 表 64×u16 → ×feed（默认 1.5，走纸降速换热量裕度），
     取整规则固定为 floor（向下取整，纯整数实现）——与 ThreeDaPrint 5.22 成品一致
   - 2 处 RFID curve-flag 字节 03 21 → 00 21（原作者成品同样改了这两处）
-  - RFID 读取失败旁路 0x01025478: 02 28 → ff 28（6.19 专有，否则无标签纸报
+  - RFID 读取失败旁路 0x010254c2: 01 21 → 00 21（6.19 专有，否则无标签纸报
     WriteRfidFail/0x14 无法打印；见 docs/B1_6.19_rfid_bypass.md）
 
 用法:
@@ -62,12 +62,14 @@ RFID_OLD = b"\x03\x21"
 RFID_NEW = b"\x00\x21"
 
 # RFID read-failure bypass（6.19 新增 RFID 模块；5.22 无此路径，见 docs/B1_6.19_rfid_bypass.md）
-#   0x01025478  cmp r0,#2  (02 28)  ->  cmp r0,#0xff  (ff 28)
-#   无标签纸读取失败时，0x102543e 只在打印机状态==2（打印中）才升级为错误 0x14
-#   (WriteRfidFail)；比较改为永不成立后，失败读取与空闲时一样静默返回。
-RFID_BYPASS_SITE = 0x01025478
-RFID_BYPASS_OLD = b"\x02\x28"
-RFID_BYPASS_NEW = b"\xff\x28"
+#   0x010254c2  movs r1,#1  (01 21)  ->  movs r1,#0  (00 21)
+#   无标签纸打印时 0x102543e 把状态字 bit19 置位（movs r1,#1; lsls r1,#0x13;
+#   orrs r0,r1; str），该位被 0x10108e2 映射为错误码 0x14（WriteRfidFail）。
+#   把立即数改成 0 后 orrs 成为无操作，错误位永不置位；换纸后的退纸/重试走纸
+#   分支（同函数内 0x1017c04）保持不变，不会被这个补丁动到。
+RFID_BYPASS_SITE = 0x010254C2
+RFID_BYPASS_OLD = b"\x01\x21"
+RFID_BYPASS_NEW = b"\x00\x21"
 
 
 def scale_floor(x: int, f: Fraction) -> int:
@@ -138,7 +140,7 @@ def main() -> int:
               f"期望={RFID_BYPASS_OLD.hex(' ')}，中止", file=sys.stderr)
         return 1
     raw[o:o + 2] = RFID_BYPASS_NEW
-    changes.append((o, RFID_BYPASS_SITE, "02 28 -> ff 28", "RFID read-failure bypass"))
+    changes.append((o, RFID_BYPASS_SITE, "01 21 -> 00 21", "RFID read-failure bypass"))
 
     off = LINEPERIOD_VADDR - BASE
     tab = [struct.unpack("<H", raw[off + 2 * i:off + 2 * i + 2])[0] for i in range(len(LINEPERIOD_ORIG))]
