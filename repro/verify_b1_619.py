@@ -10,7 +10,8 @@
   ③ 15 个 float 系数 == 400.0（字节 00 00 C8 43）
   ④ 64 项 line-period == floor(old * 3/2)，且无 u16 溢出
   ⑤ 两处 RFID curve-flag == 00 21（原厂为 03 21）
-  ⑥ 全文件差异只落在目标区（覆盖 192 字节），预期外变化 0
+  ⑧ RFID 读取失败旁路 0x01025478 == ff 28（原厂为 02 28）
+  ⑥ 全文件差异只落在目标区（覆盖 194 字节），预期外变化 0
   ⑦ 候选 md5 == 期望值
 退出码 0 = 全部通过。
 """
@@ -24,8 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from apply_patch_b1_619 import (BASE, COEFFS, COEFF_TARGET, FEED,  # noqa: E402
                                 LINEPERIOD_ORIG, LINEPERIOD_VADDR,
-                                OUT_MD5, RFID_FLAGS, RFID_NEW, RFID_OLD,
-                                SRC_MD5, SRC_SIZE, scale_floor)
+                                OUT_MD5, RFID_BYPASS_NEW, RFID_BYPASS_OLD,
+                                RFID_BYPASS_SITE, RFID_FLAGS, RFID_NEW,
+                                RFID_OLD, SRC_MD5, SRC_SIZE, scale_floor)
 
 
 def main() -> int:
@@ -81,11 +83,19 @@ def main() -> int:
     if not c5:
         bad.append("⑤")
 
+    p = RFID_BYPASS_SITE - BASE
+    c8 = o[p:p + 2] == RFID_BYPASS_OLD and n[p:p + 2] == RFID_BYPASS_NEW
+    print(f"⑧ RFID 读取旁路 : {'PASS' if c8 else 'FAIL'}"
+          f"  ({RFID_BYPASS_SITE:#010x} 原厂={o[p:p + 2].hex(' ')} 候选={n[p:p + 2].hex(' ')})")
+    if not c8:
+        bad.append("⑧")
+
     target = set()
     for vaddr, _e, _l in COEFFS:
         target.update(range(vaddr - BASE, vaddr - BASE + 4))
     for vaddr in RFID_FLAGS:
         target.update(range(vaddr - BASE, vaddr - BASE + 2))
+    target.update(range(RFID_BYPASS_SITE - BASE, RFID_BYPASS_SITE - BASE + 2))
     target.update(range(off, off + 128))
     diffs = [i for i in range(len(o)) if o[i] != n[i]]
     extra = [i for i in diffs if i not in target]

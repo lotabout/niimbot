@@ -7,6 +7,10 @@
   A) 15 个 IEEE-754 float 能量系数        -> 400.0
   B) line-period 表 64 x u16              -> floor(old * 3/2)
   C) 两处 RFID curve-flag 字节            -> 03 21 改为 00 21
+  D) RFID 读取失败旁路 0x01025478         -> 02 28 改为 ff 28（6.19 专有）
+     6.19 新增的 RFID 模块在打印中读不到标签会回 0xDB 0x14（WriteRfidFail），
+     无标签纸无法打印；该补丁让失败读取按空闲路径静默返回。
+     详见 docs/B1_6.19_rfid_bypass.md。
 
 代码注入（把上游 5.22 的 Cortex-M0 code-cave detour 换址移植到 6.19）:
   1) 0x010161EE  renderer A 入口 push 之后的 4 字节  -> bl det124
@@ -82,6 +86,14 @@ LINEPERIOD_ORIG = [
 RFID_FLAGS = [0x01022A4C, 0x01022B90]
 RFID_OLD = b"\x03\x21"
 RFID_NEW = b"\x00\x21"
+
+# RFID read-failure bypass（6.19 新增 RFID 模块；5.22 无此路径，见 docs/B1_6.19_rfid_bypass.md）
+#   0x01025478  cmp r0,#2  (02 28)  ->  cmp r0,#0xff  (ff 28)
+#   无标签纸读取失败时，0x102543e 只在打印机状态==2（打印中）才升级为错误 0x14
+#   (WriteRfidFail)；比较改为永不成立后，失败读取与空闲时一样静默返回。
+RFID_BYPASS_SITE = 0x01025478
+RFID_BYPASS_OLD = b"\x02\x28"
+RFID_BYPASS_NEW = b"\xff\x28"
 
 # ---- 移植点（6.19 实测地址） ----
 DENSITY_BYTE = 0x00020740          # 5.22: 0x00020704（config struct +4）
@@ -229,6 +241,14 @@ def main() -> int:
             print(f"!! {vaddr:#010x} RFID={bytes(raw[off:off+2]).hex(' ')}，中止", file=sys.stderr)
             return 1
         raw[off:off + 2] = RFID_NEW
+
+    # ---- 基线 D：RFID 读取失败旁路 ----
+    off = RFID_BYPASS_SITE - BASE
+    if bytes(raw[off:off + 2]) != RFID_BYPASS_OLD:
+        print(f"!! {RFID_BYPASS_SITE:#010x} 字节={bytes(raw[off:off+2]).hex(' ')} "
+              f"期望={RFID_BYPASS_OLD.hex(' ')}，中止", file=sys.stderr)
+        return 1
+    raw[off:off + 2] = RFID_BYPASS_NEW
 
     # ---- 基线 B：line-period ----
     off = LINEPERIOD_VADDR - BASE

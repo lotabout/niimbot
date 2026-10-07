@@ -34,7 +34,11 @@ CMD_ROW_BITMAP = 0x85
 CMD_PAGE_END = 0xE3
 CMD_PRINT_STATUS = 0xA3
 CMD_PRINT_END = 0xF3
+CMD_CALIBRATE = 0x8E   # LabelPositioningCalibration; data = label type, reply 0x8F
 CMD_ERROR = 0xDB
+
+# SetLabelType / calibration label types (niimbluelib LabelType)
+LABEL_TYPES = {"gap": 1, "black": 2, "continuous": 3, "perforated": 4, "transparent": 5}
 
 INFO_KEYS = {
     "density": 1, "speed": 2, "label_type": 3, "language": 6,
@@ -178,6 +182,14 @@ class B1:
         return {"uuid": uuid, "barcode": barcode, "serial": serial_,
                 "total_len": total, "used_len": used, "type": typ, "raw": d.hex()}
 
+    def calibrate(self, label_type=1):
+        """Label positioning calibration (0x8E). FW 6.19 handler 0x101dbf6: for types
+        1 (gap), 2 (black mark) and 5 (transparent) it stores the label type and starts
+        the calibration feed (~15 cm of paper) — no RFID tag needed. Refused (reply 0)
+        while the cover is open, paper is out or a job is running."""
+        p = self.transceive(CMD_CALIBRATE, bytes([label_type]), 0x8F, timeout=5.0)
+        return bool(p and p.data and p.data[0] == 1)
+
     def print_status(self):
         p = self.transceive(CMD_PRINT_STATUS, b"\x01", 0xB3, timeout=1.0)
         if p is None:
@@ -285,6 +297,9 @@ def main():
     pi = sub.add_parser("image")
     pi.add_argument("file")
     pi.add_argument("--density", type=int, default=5, help="1..5, printer rejects higher")
+    pc = sub.add_parser("calibrate", help="label positioning calibration (feeds ~15 cm)")
+    pc.add_argument("--type", default="gap", choices=sorted(LABEL_TYPES),
+                    help="label type: gap (default), black (black mark), transparent")
     args = ap.parse_args()
 
     pr = B1(args.port, verbose=args.verbose)
@@ -311,6 +326,10 @@ def main():
                 img = img.resize((HEAD_PX, h), Image.LANCZOS)
             pr.print_image(img.point(lambda v: 255 if v > 128 else 0), density=args.density)
             print("done")
+        elif args.cmd == "calibrate":
+            pr.connect()
+            ok = pr.calibrate(LABEL_TYPES[args.type])
+            print("calibration", "started" if ok else "refused (cover open / no paper / busy?)")
     finally:
         pr.close()
 

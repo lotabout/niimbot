@@ -7,6 +7,7 @@
   3  15 个能量系数 == 400.0
   4  64 项 line-period == floor(old * 3/2)
   5  2 处 RFID curve-flag == 00 21
+  11 RFID 读取失败旁路 0x01025478 == ff 28
   6  hook A/B 4 字节 == 期望的 bl，且 bl 解码目标正确
   7  cave A/B 字节 == 由 build 脚本重建的字节（逐字节）
   8  capstone 反汇编回读（可选; 由 $CAPSTONE_PATH 或 ~/.tools 提供）: cave 内 bl 目标 / 栈偏移 / 位移指令
@@ -28,8 +29,8 @@ for _p in (str(HERE), str(HERE.parent / "build")):
 import build_b1_619_density as B  # noqa: E402
 
 BASE = B.BASE
-EXPECT_MD5 = "43065da9717c4ba533c6669cc7a8e9b9"
-EXPECT_SHA256 = "cd4af7984982295d457d352992c588a9d265dc2be135ac584c97fd9bcc4bd496"
+EXPECT_MD5 = "89b78b234df74ab6d62e8fc5025eaab1"
+EXPECT_SHA256 = "bbcbf55a62dcb5ec0e0ddbad7ca9a14616776731dab26d5a5ec8ab1a32821b96"
 
 # 允许变化区域（file offset 区间，闭区间）
 
@@ -49,6 +50,7 @@ ALLOWED = [
     (0x06D4C, 0x06D5F),      # renderer B 5 系数
     (0x12A4C, 0x12A4D),      # RFID #1
     (0x12B90, 0x12B91),      # RFID #2
+    (0x15478, 0x15479),      # RFID read-failure bypass (cmp r0,#2 -> cmp r0,#0xff)
     (0x1D21C, 0x1D29B),      # line-period 64 项
     (0x061EE, 0x061F1),      # hook124
     (0x0690E, 0x06911),      # hook844
@@ -111,6 +113,11 @@ def main() -> int:
             ok5 = False
             bad5.append(f"{vaddr:#x}={bytes(img[o:o+2]).hex(' ')}")
     check(5, "2 处 RFID == 00 21", ok5, ", ".join(bad5))
+
+    o = B.RFID_BYPASS_SITE - BASE
+    check(11, "RFID 读取失败旁路 == ff 28 (cmp r0,#0xff)",
+          bytes(img[o:o + 2]) == B.RFID_BYPASS_NEW,
+          f"{B.RFID_BYPASS_SITE:#x}={bytes(img[o:o+2]).hex(' ')}")
 
     ok6, d6 = True, []
     for hook, target, orig, name in ((B.HOOK_A, B.CAVE_B, B.HOOK_A_ORIG, "hook124"),

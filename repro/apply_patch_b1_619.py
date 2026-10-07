@@ -5,7 +5,13 @@
   1) 15 个 IEEE-754 float 能量系数  ->  400.0
   2) line-period 表 64 x u16        ->  floor(old * 3/2)   ← 向零截断 = 向下取整
   3) 两处 RFID curve-flag 字节      ->  03 21 改为 00 21
-  4) 其余字节一律不动，输出长度与源文件相同
+  4) RFID 读取失败旁路 0x01025478   ->  02 28 改为 ff 28（cmp r0,#2 -> cmp r0,#0xff）
+  5) 其余字节一律不动，输出长度与源文件相同
+
+规则 4 是 6.19 专有：6.19 新增的 RFID 模块在打印中连续读不到标签会置错误位并回
+0xDB 0x14（WriteRfidFail），无标签的第三方纸因此无法打印（原厂 6.19 已真机复现）。
+把 0x102543e 里"打印机状态==2"的比较改成永不成立，读取失败就按空闲路径静默返回。
+详见 docs/B1_6.19_rfid_bypass.md。
 
 为什么规则 2 是 floor 而不是就近取整
 ------------------------------------
@@ -20,7 +26,8 @@ ThreeDaPrint 原库发布了 5.22 的成品镜像 firmware/B1_5.22_thirdparty_fu
   # 不带 --out 时只做校验、不写文件（dry-run）
 
 成功判据:
-  输出 md5 == b7d4f4e5f07bdae5fceb75b29949e6af，且大小 124436。
+  输出 md5 == 76b55d0472110e6da95f5c0fb68d09e1，且大小 124436。
+  （不含规则 4 的旧镜像 md5 为 b7d4f4e5f07bdae5fceb75b29949e6af。）
 """
 import argparse
 import hashlib
@@ -32,7 +39,7 @@ from pathlib import Path
 BASE = 0x01010000
 SRC_MD5 = "fd9efd1441b5f05ca46c310b8d162dc1"
 SRC_SIZE = 124436
-OUT_MD5 = "b7d4f4e5f07bdae5fceb75b29949e6af"
+OUT_MD5 = "76b55d0472110e6da95f5c0fb68d09e1"
 COEFF_TARGET = 400.0
 FEED = Fraction(3, 2)          # 1.5 精确有理数，无二进制浮点误差
 
@@ -69,6 +76,14 @@ LINEPERIOD_ORIG = [
 RFID_FLAGS = [0x01022A4C, 0x01022B90]
 RFID_OLD = b"\x03\x21"
 RFID_NEW = b"\x00\x21"
+
+# RFID read-failure bypass（6.19 新增 RFID 模块；5.22 无此路径，见 docs/B1_6.19_rfid_bypass.md）
+#   0x01025478  cmp r0,#2  (02 28)  ->  cmp r0,#0xff  (ff 28)
+#   无标签纸读取失败时，0x102543e 只在打印机状态==2（打印中）才升级为错误 0x14
+#   (WriteRfidFail)；比较改为永不成立后，失败读取与空闲时一样静默返回。
+RFID_BYPASS_SITE = 0x01025478
+RFID_BYPASS_OLD = b"\x02\x28"
+RFID_BYPASS_NEW = b"\xff\x28"
 
 
 def scale_floor(x: int, f: Fraction) -> int:
@@ -122,6 +137,13 @@ def main() -> int:
                   f"期望={RFID_OLD.hex(' ')}，中止", file=sys.stderr)
             return 1
         raw[off:off + 2] = RFID_NEW
+
+    off = RFID_BYPASS_SITE - BASE
+    if bytes(raw[off:off + 2]) != RFID_BYPASS_OLD:
+        print(f"!! {RFID_BYPASS_SITE:#010x} 字节={bytes(raw[off:off + 2]).hex(' ')} "
+              f"期望={RFID_BYPASS_OLD.hex(' ')}，中止", file=sys.stderr)
+        return 1
+    raw[off:off + 2] = RFID_BYPASS_NEW
 
     off = LINEPERIOD_VADDR - BASE
     tab = [struct.unpack("<H", raw[off + 2 * i:off + 2 * i + 2])[0]

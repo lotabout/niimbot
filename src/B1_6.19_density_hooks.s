@@ -11,6 +11,10 @@
  *   cave A         0x0102bbec -> 0x0102cb64      (ref-free zero run)
  *   cave B         0x0102bc4a -> 0x0102c1ee      (ref-free zero run)
  *
+ * Not part of this cave code, but applied by the same builder: the 6.19-only RFID
+ * read-failure bypass at 0x01025478 (cmp r0,#2 -> cmp r0,#0xff, bytes 02 28 -> ff 28),
+ * see docs/B1_6.19_rfid_bypass.md.
+ *
  * Authoritative byte source for the shipped image is build/build_b1_619_density.py.
  * That encoder is anchored by byte-exact reproduction of the upstream 5.22 image
  * (repro/reproduce_522_density.py -> 0 bytes difference vs md5 023ff563...).

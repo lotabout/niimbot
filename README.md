@@ -32,13 +32,19 @@ value into the print engine at all).
 3. **D5 = solid black**, energy-identical to the proven full-quality build; lower
    densities only *reduce* energy below that, so there is no over-burn and no
    print-line timing risk.
+4. **Untagged paper prints at all.** Firmware 6.19 (unlike 5.22) refuses to print when it
+   cannot read a label RFID tag: every job on third-party paper fails with
+   `0xDB 0x14` / niimblue `Print error 20: WriteRfidFail` — on **stock** 6.19 too. Both
+   images carry a 1-byte bypass that makes a failed tag read return silently; genuine
+   rolls (tag read OK) are handled exactly as before. Details:
+   `docs/B1_6.19_rfid_bypass.md`.
 
 ## Images
 
 | File | md5 | What it is |
 |---|---|---|
-| `firmware/B1_6.19_density_coeff.bin` | `43065da9717c4ba533c6669cc7a8e9b9` | **Recommended**: density-controlled darkness (D1–D5) |
-| `firmware/B1_6.19_thirdparty_fullquality.bin` | `b7d4f4e5f07bdae5fceb75b29949e6af` | Fixed full darkness, **no** density control |
+| `firmware/B1_6.19_density_coeff.bin` | `89b78b234df74ab6d62e8fc5025eaab1` | **Recommended**: density-controlled darkness (D1–D5) |
+| `firmware/B1_6.19_thirdparty_fullquality.bin` | `76b55d0472110e6da95f5c0fb68d09e1` | Fixed full darkness, **no** density control |
 
 Both are **124436 bytes**, the same size as stock 6.19 (no partition changes).
 SHA-256 sums for every file: `repro/SHA256SUMS.txt`.
@@ -56,6 +62,9 @@ paper type — that is why third-party paper prints faint. The patch does two th
 - 15 coefficients (4 base + 6 renderer A + 5 renderer B) → `400.0`
 - the 64-entry line-period table → `floor(old × 1.5)` (slower feed = more heat budget per line)
 - two RFID curve-flag bytes `03 21` → `00 21` (following the upstream build; harmless)
+- the 6.19-only RFID read-failure bypass: `0x01025478` `02 28` → `ff 28`
+  (`cmp r0,#2` → `cmp r0,#0xff`), so a tag read that fails during printing no longer
+  escalates to error `0x14` (see `docs/B1_6.19_rfid_bypass.md`)
 
 **Build B (density-controlled)** = build A **+ 4 code injections**: one `bl` right after
 each renderer's entry `push`, jumping into a code cave in free flash, which scales the
@@ -104,6 +113,7 @@ Injection points (measured on 6.19; full ledger in `docs/B1_6.19_density_port_no
 | `repro/SHA256SUMS.txt` | SHA-256 of every file in this branch |
 | `src/B1_6.19_density_hooks.s` / `.ld` | 6.19 cave assembly + linker script (equivalent source; see ledger §6) |
 | `docs/B1_6.19_density_port_notes.md` | 6.19 port ledger: address mapping, evidence chain, open items |
+| `docs/B1_6.19_rfid_bypass.md` | Why 6.19 refuses untagged paper (`WriteRfidFail`) and the 1-byte bypass, with the RE chain |
 | `docs/B1_density_coefficient_checkpoint.md` | Upstream 5.22 density RE + patch map (read this to port to another dump) |
 | `docs/B1_firmware_RE_checkpoint.md` | Upstream 5.22 energy model and general B1 RE |
 | `src/niimbot_b1.py` | Minimal B1 USB (CDC-ACM) driver for printing / testing |
@@ -156,10 +166,10 @@ on `main`. Check 8 needs `pip install capstone`.
 
 **Proven (byte level)**
 
-- Build B rebuilds byte-for-byte from stock 6.19 (md5 `43065da9…`); all 270 changed bytes
+- Build B rebuilds byte-for-byte from stock 6.19 (md5 `89b78b23…`); all 271 changed bytes
   fall inside the expected regions — **0 bytes outside**.
-- All 15 coefficients, the 64 line-period entries, both RFID flags, both hook `bl`
-  literals and both code caves were checked item by item; capstone disassembly read-back
+- All 15 coefficients, the 64 line-period entries, both RFID flags, the RFID bypass byte,
+  both hook `bl` literals and both code caves were checked item by item; capstone disassembly read-back
   confirms the `bl` targets, the stack offsets `0x38/0x3c/0x40` and the replayed displaced
   instructions.
 - The cave encoder itself is anchored by upstream: with the same encoder and only the
@@ -188,6 +198,9 @@ on `main`. Check 8 needs `pip install capstone`.
    and always prints dark regardless of firmware, so it cannot show any difference.
 2. Take a baseline print on third-party paper **before** flashing, for comparison.
 3. Set the correct paper type (gap / black-mark / continuous) before judging darkness.
+   Without an RFID tag the printer cannot learn the type from the roll, so the host has
+   to send it; a positioning calibration can be triggered without a tag with
+   `python3 src/niimbot_b1.py calibrate --type gap` (see `docs/B1_6.19_rfid_bypass.md` §4).
 4. Print `test-labels/dtest_D1..D5.png` (or your own image): darkness should increase
    monotonically D1 → D5, with D5 solid black.
 5. **Over-burn** (ink bleeding, fuzzy edges, scorched coating) means your energy window is
